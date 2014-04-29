@@ -5,7 +5,7 @@
     <title>bzzzt</title>
   </head>
   <body>
-    <button id="finger">Open door</button>
+    <button id="button" active>Unlock</button>
     <script>
     (function() {
       function post() {
@@ -17,16 +17,22 @@
         return xhr;
       }
 
-      finger.addEventListener("mousedown", function() {
+      var button = document.getElementById("button");
+
+      button.addEventListener("mousedown", function(e) {
+        if (e.button !== 0) {
+          return;
+        }
+
         var token = Date.now();
 
         function onMouseUp() {
           post("token=" + token + "&is_pressed=no");
-          finger.removeEventListener("mouseup", onMouseUp);
+          button.removeEventListener("mouseup", onMouseUp);
         }
 
         post("token=" + token + "&is_pressed=yes");
-        finger.addEventListener("mouseup", onMouseUp, false);
+        button.addEventListener("mouseup", onMouseUp, false);
       }, false);
     })();
     </script>

@@ -46,7 +46,7 @@ class MainHandler(tornado.web.RequestHandler):
         return self.application.button_presses
 
     def get(self):
-        self.render("app.html")
+        self.render("index.html")
 
     def post(self):
         token = self.get_argument("token")
@@ -66,8 +66,7 @@ tornado.options.parse_command_line()
 
 app = tornado.web.Application([
     (r"/", MainHandler)
-], template_path=os.path.join(os.path.dirname(__file__), "templates"),
-   debug=options.debug)
+], debug=options.debug)
 
 with Header() as header:
     finger = OutputPin(options.pin, value=False)
