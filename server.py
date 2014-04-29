@@ -78,7 +78,7 @@ with Header() as header:
         num_presses = len(app.button_presses)
         if options.debug:
             logging.info(num_presses)
-        finger.output = num_presses > 0
+        finger.value = num_presses > 0
 
     try:
         app.listen(options.port)
