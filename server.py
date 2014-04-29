@@ -5,7 +5,6 @@ import tornado.web
 import os
 import functools
 import datetime
-import logging
 
 from gpiocrust import Header, OutputPin
 from tornado.options import define, options
@@ -35,6 +34,9 @@ class Presses(object):
     def _invoke_watchers(self, method=None, changed=None):
         for watcher in self._watchers:
             watcher(method, changed)
+
+    def __repr__(self):
+        return repr(self._presses)
 
     def __len__(self):
         return len(self._presses)
@@ -74,10 +76,9 @@ with Header() as header:
 
     @app.button_presses.add_watcher
     def update_pin(method, changed):
-        num_presses = len(app.button_presses)
         if options.debug:
-            logging.info(num_presses)
-        finger.value = num_presses > 0
+            print app.button_presses
+        finger.value = len(app.button_presses) > 0
 
     try:
         app.listen(options.port)

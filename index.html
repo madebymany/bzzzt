@@ -8,12 +8,23 @@
     <button id="button" active>Unlock</button>
     <script>
     (function() {
-      function post() {
+      function post(query, callback) {
         var xhr = new XMLHttpRequest();
         xhr.open("POST", document.location.pathname, true);
         xhr.setRequestHeader("content-type",
                              "application/x-www-form-urlencoded");
-        xhr.send.apply(xhr, arguments);
+        xhr.send(query);
+
+        xhr.onreadystatechange = function() {
+          if (xhr.readyState == 4) {
+            if (xhr.status == 200) {
+              if (typeof callback === "function") {
+                callback();
+              }
+            }
+          }
+        };
+
         return xhr;
       }
 
@@ -25,13 +36,25 @@
         }
 
         var token = Date.now();
+        var mouseDownCompleted = false;
+        var mouseUp;
 
         function onMouseUp() {
-          post("token=" + token + "&is_pressed=no");
+          mouseUp = post.bind(null, "token=" + token + "&is_pressed=no");
+          if (mouseDownCompleted) {
+            mouseUp();
+            mouseUp = null;
+          }
           button.removeEventListener("mouseup", onMouseUp);
         }
 
-        post("token=" + token + "&is_pressed=yes");
+        post("token=" + token + "&is_pressed=yes", function() {
+          if (typeof mouseUp === "function") {
+            mouseUp();
+          }
+          mouseDownCompleted = true;
+        });
+
         button.addEventListener("mouseup", onMouseUp, false);
       }, false);
     })();
