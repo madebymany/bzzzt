@@ -11,7 +11,7 @@ from tornado.options import define, options
 
 define("pin", default=8, help="output pin", type=int)
 define("press_duration", default=3.0, help="output pin", type=float)
-define("port", default=8888, help="run on the given port", type=int)
+define("port", default=80, help="run on the given port", type=int)
 define("debug", default=False, help="run in debug mode", type=bool)
 
 
