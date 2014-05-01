@@ -42,9 +42,9 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
 
     def on_message(self, is_pressed):
         button = WebSocketHandler.button
-        if is_pressed == "yes":
+        if is_pressed == "1":
             button.add_press(self)
-        elif is_pressed == "no":
+        else:
             button.discard_press(self)
         for connection in WebSocketHandler.connections:
             connection.write_message(str(len(button.presses)))
