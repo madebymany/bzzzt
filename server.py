@@ -8,25 +8,21 @@ from gpiocrust import Header, OutputPin
 from tornado.options import define, options
 
 define("pin", default=8, help="output pin", type=int)
-define("port", default=80, help="run on the given port", type=int)
+define("port", default=8888, help="run on the given port", type=int)
 define("debug", default=False, help="run in debug mode", type=bool)
 
 
 class Button(object):
     def __init__(self):
-        self._presses = set()
+        self.presses = set()
         self._watchers = set()
 
-    @property
-    def presses(self):
-        return self._presses
-
     def add_press(self, press):
-        self._presses.add(press)
+        self.presses.add(press)
         self._invoke_watchers("add", press)
 
     def discard_press(self, press):
-        self._presses.discard(press)
+        self.presses.discard(press)
         self._invoke_watchers("discard", press)
 
     def add_watcher(self, method):
