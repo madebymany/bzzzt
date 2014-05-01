@@ -43,7 +43,7 @@ class Button(object):
 
     def _invoke_watchers(self, method=None, changed=None):
         for watcher in self._watchers:
-            watcher(method, changed, self.presses)
+            watcher(method, changed, self)
 
 
 class WebSocketHandler(tornado.websocket.WebSocketHandler):
@@ -87,10 +87,10 @@ with Header() as header:
     finger = OutputPin(options.pin, value=False)
 
     @WebSocketHandler.button.add_watcher
-    def update_pin(m, c, presses):
+    def update_pin(m, c, button):
         if options.debug:
-            print presses
-        finger.value = len(presses) > 0
+            print button.presses
+        finger.value = button.is_pressed
 
     try:
         app.listen(options.port)
