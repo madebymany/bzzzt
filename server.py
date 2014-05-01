@@ -2,83 +2,95 @@
 
 import tornado.ioloop
 import tornado.web
-import os
-import functools
-import datetime
+import tornado.websocket
+import tornado.escape
 
 from gpiocrust import Header, OutputPin
 from tornado.options import define, options
 
 define("pin", default=8, help="output pin", type=int)
-define("press_duration", default=3.0, help="output pin", type=float)
-define("port", default=80, help="run on the given port", type=int)
+define("port", default=8888, help="run on the given port", type=int)
 define("debug", default=False, help="run in debug mode", type=bool)
 
 
-class Presses(object):
+class Button(object):
     def __init__(self):
-        self._presses = set()
+        self.presses = set()
         self._watchers = set()
 
-    def add(self, item):
-        self._presses.add(item)
-        self._invoke_watchers("add", item)
+    @property
+    def is_pressed(self):
+        return len(self.presses) > 0
 
-    def discard(self, item):
-        self._presses.discard(item)
-        self._invoke_watchers("discard", item)
+    def has_changed_state(self):
+        try:
+            return self.is_pressed != self.latest_is_pressed
+        except AttributeError:
+            return True
+        finally:
+            self.latest_is_pressed = self.is_pressed
+
+    def add_press(self, press):
+        self.presses.add(press)
+        self._invoke_watchers("add", press)
+
+    def discard_press(self, press):
+        self.presses.discard(press)
+        self._invoke_watchers("discard", press)
 
     def add_watcher(self, method):
         self._watchers.add(method)
 
     def _invoke_watchers(self, method=None, changed=None):
         for watcher in self._watchers:
-            watcher(method, changed)
-
-    def __repr__(self):
-        return repr(self._presses)
-
-    def __len__(self):
-        return len(self._presses)
+            watcher(method, changed, self)
 
 
-class MainHandler(tornado.web.RequestHandler):
-    @property
-    def button_presses(self):
-        return self.application.button_presses
+class WebSocketHandler(tornado.websocket.WebSocketHandler):
+    connections = set()
+    button = Button()
 
-    def get(self):
-        self.render("index.html")
+    def open(self):
+        self.id = self.get_argument("id")
+        WebSocketHandler.connections.add(self)
 
-    def post(self):
-        token = self.get_argument("token")
-        is_pressed = self.get_argument("is_pressed", None)
-        if is_pressed == "yes":
-            self.button_presses.add(token)
-        elif is_pressed == "no":
-            self.button_presses.discard(token)
+    def on_message(self, is_pressing):
+        cls = WebSocketHandler
+
+        if int(is_pressing) == 1:
+            cls.button.add_press(self)
         else:
-            self.button_presses.add(token)
-            tornado.ioloop.IOLoop.instance().add_timeout(
-                datetime.timedelta(seconds=options.press_duration),
-                functools.partial(self.button_presses.discard, token))
+            cls.button.discard_press(self)
+
+        if cls.button.has_changed_state():
+            is_unlocked = cls.button.is_pressed
+            data = {
+                "is_unlocked": is_unlocked
+            }
+            if is_unlocked:
+                data["id"] = self.id
+            for connection in cls.connections:
+                connection.write_message(tornado.escape.json_encode(data))
+
+    def on_close(self):
+        WebSocketHandler.button.discard_press(self)
+        WebSocketHandler.connections.remove(self)
 
 
 tornado.options.parse_command_line()
 
 app = tornado.web.Application([
-    (r"/", MainHandler)
+    (r"/", WebSocketHandler)
 ], debug=options.debug)
 
 with Header() as header:
     finger = OutputPin(options.pin, value=False)
-    app.button_presses = Presses()
 
-    @app.button_presses.add_watcher
-    def update_pin(method, changed):
+    @WebSocketHandler.button.add_watcher
+    def update_pin(m, c, button):
         if options.debug:
-            print app.button_presses
-        finger.value = len(app.button_presses) > 0
+            print button.presses
+        finger.value = button.is_pressed
 
     try:
         app.listen(options.port)
