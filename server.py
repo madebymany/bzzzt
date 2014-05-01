@@ -55,26 +55,28 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
         WebSocketHandler.connections.add(self)
 
     def on_message(self, is_pressing):
-        cls = WebSocketHandler
-
         if int(is_pressing) == 1:
-            cls.button.add_press(self)
+            WebSocketHandler.button.add_press(self)
         else:
-            cls.button.discard_press(self)
+            WebSocketHandler.button.discard_press(self)
 
-        if cls.button.has_changed_state():
-            is_unlocked = cls.button.is_pressed
-            data = {
-                "is_unlocked": is_unlocked
-            }
-            if is_unlocked:
-                data["id"] = self.id
-            for connection in cls.connections:
-                connection.write_message(tornado.escape.json_encode(data))
+        if WebSocketHandler.button.has_changed_state():
+            self.send_state()
 
     def on_close(self):
         WebSocketHandler.button.discard_press(self)
         WebSocketHandler.connections.remove(self)
+        self.send_state()
+
+    def send_state(self):
+        is_unlocked = WebSocketHandler.button.is_pressed
+        data = {
+            "is_unlocked": is_unlocked
+        }
+        if is_unlocked:
+            data["id"] = self.id
+        for connection in WebSocketHandler.connections:
+            connection.write_message(tornado.escape.json_encode(data))
 
 
 tornado.options.parse_command_line()
