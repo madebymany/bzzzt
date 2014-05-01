@@ -3,6 +3,7 @@
 import tornado.ioloop
 import tornado.web
 import tornado.websocket
+import tornado.escape
 
 from gpiocrust import Header, OutputPin
 from tornado.options import define, options
@@ -16,6 +17,18 @@ class Button(object):
     def __init__(self):
         self.presses = set()
         self._watchers = set()
+
+    @property
+    def is_pressed(self):
+        return len(self.presses) > 0
+
+    def has_changed_state(self):
+        try:
+            return self.is_pressed != self.latest_is_pressed
+        except AttributeError:
+            return True
+        finally:
+            self.latest_is_pressed = self.is_pressed
 
     def add_press(self, press):
         self.presses.add(press)
@@ -38,16 +51,26 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
     button = Button()
 
     def open(self):
+        self.id = self.get_argument("id")
         WebSocketHandler.connections.add(self)
 
-    def on_message(self, is_pressed):
-        button = WebSocketHandler.button
-        if is_pressed == "1":
-            button.add_press(self)
+    def on_message(self, is_pressing):
+        cls = WebSocketHandler
+
+        if int(is_pressing) == 1:
+            cls.button.add_press(self)
         else:
-            button.discard_press(self)
-        for connection in WebSocketHandler.connections:
-            connection.write_message(str(len(button.presses)))
+            cls.button.discard_press(self)
+
+        if cls.button.has_changed_state():
+            is_unlocked = cls.button.is_pressed
+            data = {
+                "is_unlocked": is_unlocked
+            }
+            if is_unlocked:
+                data["id"] = self.id
+            for connection in cls.connections:
+                connection.write_message(tornado.escape.json_encode(data))
 
     def on_close(self):
         WebSocketHandler.button.discard_press(self)
