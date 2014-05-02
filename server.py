@@ -7,6 +7,7 @@ import tornado.escape
 import datetime
 import functools
 import logging
+from logging.handlers import SysLogHandler
 
 from gpiocrust import Header, OutputPin
 from tornado.options import define, options
@@ -15,6 +16,7 @@ define("pin", default=8, help="output pin", type=int)
 define("port", default=8888, help="run on the given port", type=int)
 define("debug", default=False, help="run in debug mode", type=bool)
 
+logger = logging.getLogger()
 
 class Button(object):
     def __init__(self):
@@ -59,14 +61,14 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
     def open(self):
         self.id = self.get_argument("id")
 
-        logging.info("%s connected", self.id)
+        logger.info("%s connected", self.id)
 
         WebSocketHandler.connections.add(self)
         self._add_periodic_ping()
         self._add_cleanup_timeout()
 
     def on_message(self, is_pressing):
-        logging.info("Message from %s", self.id)
+        logger.info("Message from %s", self.id)
 
         if int(is_pressing) == 1:
             WebSocketHandler.button.add_press(self)
@@ -77,15 +79,15 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
             self.send_state()
 
     def on_pong(self, _):
-        logging.info("Pong from %s", self.id)
+        logger.info("Pong from %s", self.id)
         self._add_cleanup_timeout()
 
     def on_close(self):
-        logging.info("%s disconnected", self.id)
+        logger.info("%s disconnected", self.id)
         self.cleanup()
 
     def send_state(self):
-        logging.info("Sending state")
+        logger.info("Sending state")
 
         is_unlocked = WebSocketHandler.button.is_pressed
         data = {
@@ -97,12 +99,12 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
             connection.write_message(tornado.escape.json_encode(data))
 
     def cleanup(self):
-        logging.info("Cleaning up %s", self.id)
+        logger.info("Cleaning up %s", self.id)
 
         self._periodic_ping.stop()
         WebSocketHandler.button.discard_press(self)
-        WebSocketHandler.send_state(self)
         WebSocketHandler.connections.remove(self)
+        WebSocketHandler.send_state(self)
 
     def _add_periodic_ping(self):
         self._periodic_ping = tornado.ioloop.PeriodicCallback(
@@ -119,6 +121,10 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
 
 
 tornado.options.parse_command_line()
+
+if not options.debug:
+    syslog = SysLogHandler(address=('logs.papertrailapp.com', 35157))
+    logger.addHandler(syslog)
 
 app = tornado.web.Application([
     (r"/", WebSocketHandler)
