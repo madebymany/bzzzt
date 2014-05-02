@@ -4,6 +4,9 @@ import tornado.ioloop
 import tornado.web
 import tornado.websocket
 import tornado.escape
+import datetime
+import functools
+import logging
 
 from gpiocrust import Header, OutputPin
 from tornado.options import define, options
@@ -47,14 +50,24 @@ class Button(object):
 
 
 class WebSocketHandler(tornado.websocket.WebSocketHandler):
+    _PING_INTERVAL = 3.0
+    _DISCONNECT_TIMEOUT = 10.0
+
     connections = set()
     button = Button()
 
     def open(self):
         self.id = self.get_argument("id")
+
+        logging.info("%s connected", self.id)
+
         WebSocketHandler.connections.add(self)
+        self._add_periodic_ping()
+        self._add_cleanup_timeout()
 
     def on_message(self, is_pressing):
+        logging.info("Message from %s", self.id)
+
         if int(is_pressing) == 1:
             WebSocketHandler.button.add_press(self)
         else:
@@ -63,12 +76,17 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
         if WebSocketHandler.button.has_changed_state():
             self.send_state()
 
+    def on_pong(self, _):
+        logging.info("Pong from %s", self.id)
+        self._add_cleanup_timeout()
+
     def on_close(self):
-        WebSocketHandler.button.discard_press(self)
-        WebSocketHandler.connections.remove(self)
-        self.send_state()
+        logging.info("%s disconnected", self.id)
+        self.cleanup()
 
     def send_state(self):
+        logging.info("Sending state")
+
         is_unlocked = WebSocketHandler.button.is_pressed
         data = {
             "is_unlocked": is_unlocked
@@ -77,6 +95,27 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
             data["id"] = self.id
         for connection in WebSocketHandler.connections:
             connection.write_message(tornado.escape.json_encode(data))
+
+    def cleanup(self):
+        logging.info("Cleaning up %s", self.id)
+
+        self._periodic_ping.stop()
+        WebSocketHandler.button.discard_press(self)
+        WebSocketHandler.send_state(self)
+        WebSocketHandler.connections.remove(self)
+
+    def _add_periodic_ping(self):
+        self._periodic_ping = tornado.ioloop.PeriodicCallback(
+            functools.partial(self.ping, "0"), self._PING_INTERVAL * 1000.0)
+        self._periodic_ping.start()
+
+    def _add_cleanup_timeout(self):
+        io_loop = tornado.ioloop.IOLoop.instance()
+        if hasattr(self, "_close_timeout"):
+            io_loop.remove_timeout(self._close_timeout)
+        self._close_timeout = io_loop.add_timeout(
+            datetime.timedelta(seconds=self._DISCONNECT_TIMEOUT),
+            functools.partial(WebSocketHandler.cleanup, self))
 
 
 tornado.options.parse_command_line()
@@ -90,8 +129,6 @@ with Header() as header:
 
     @WebSocketHandler.button.add_watcher
     def update_pin(m, c, button):
-        if options.debug:
-            print button.presses
         finger.value = button.is_pressed
 
     try:
