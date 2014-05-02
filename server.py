@@ -18,6 +18,7 @@ define("debug", default=False, help="run in debug mode", type=bool)
 
 logger = logging.getLogger()
 
+
 class Button(object):
     def __init__(self):
         self.presses = set()
@@ -70,7 +71,7 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
     def on_message(self, is_pressing):
         logger.info("Message from %s", self.id)
 
-        if int(is_pressing) == 1:
+        if is_pressing == "1":
             WebSocketHandler.button.add_press(self)
         else:
             WebSocketHandler.button.discard_press(self)
@@ -113,9 +114,9 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
 
     def _add_cleanup_timeout(self):
         io_loop = tornado.ioloop.IOLoop.instance()
-        if hasattr(self, "_close_timeout"):
-            io_loop.remove_timeout(self._close_timeout)
-        self._close_timeout = io_loop.add_timeout(
+        if hasattr(self, "_cleanup_timeout"):
+            io_loop.remove_timeout(self._cleanup_timeout)
+        self._cleanup_timeout = io_loop.add_timeout(
             datetime.timedelta(seconds=self._DISCONNECT_TIMEOUT),
             functools.partial(WebSocketHandler.cleanup, self))
 
@@ -123,7 +124,7 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
 tornado.options.parse_command_line()
 
 if not options.debug:
-    syslog = SysLogHandler(address=('logs.papertrailapp.com', 35157))
+    syslog = SysLogHandler(address=("logs.papertrailapp.com", 35157))
     logger.addHandler(syslog)
 
 app = tornado.web.Application([
