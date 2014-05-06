@@ -4,4 +4,4 @@ unset GIT_DIR
 cd /home/pi/bzzzt
 git fetch --all
 git reset --hard origin/master
-/etc/init.d/bzzzt.sh restart
+sudo /etc/init.d/bzzzt.sh restart

@@ -7,7 +7,6 @@ import tornado.escape
 import datetime
 import functools
 import logging
-from logging.handlers import SysLogHandler
 
 from gpiocrust import Header, OutputPin
 from tornado.options import define, options
@@ -61,16 +60,11 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
 
     def open(self):
         self.id = self.get_argument("id")
-
-        logger.info("%s connected", self.id)
-
         WebSocketHandler.connections.add(self)
         self._add_periodic_ping()
         self._add_cleanup_timeout()
 
     def on_message(self, is_pressing):
-        logger.info("Message from %s", self.id)
-
         if is_pressing == "1":
             WebSocketHandler.button.add_press(self)
         else:
@@ -80,19 +74,16 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
             self.send_state()
 
     def on_pong(self, _):
-        logger.info("Pong from %s", self.id)
         self._add_cleanup_timeout()
 
     def on_close(self):
-        logger.info("%s disconnected", self.id)
         self.cleanup()
 
     def send_state(self):
-        logger.info("Sending state")
-
         is_unlocked = WebSocketHandler.button.is_pressed
         data = {
-            "is_unlocked": is_unlocked
+            "is_unlocked": is_unlocked,
+            "connections": [c.id for c in WebSocketHandler.connections]
         }
         if is_unlocked:
             data["id"] = self.id
@@ -100,8 +91,6 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
             connection.write_message(tornado.escape.json_encode(data))
 
     def cleanup(self):
-        logger.info("Cleaning up %s", self.id)
-
         self._periodic_ping.stop()
         WebSocketHandler.button.discard_press(self)
         WebSocketHandler.connections.remove(self)
@@ -124,7 +113,8 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
 tornado.options.parse_command_line()
 
 if not options.debug:
-    syslog = SysLogHandler(address=("logs.papertrailapp.com", 35157))
+    syslog = logging.handlers.SysLogHandler(
+        address=("logs.papertrailapp.com", 35157))
     logger.addHandler(syslog)
 
 app = tornado.web.Application([
