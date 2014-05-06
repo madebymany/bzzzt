@@ -63,6 +63,25 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
         WebSocketHandler.connections.add(self)
         self._add_periodic_ping()
         self._add_cleanup_timeout()
+        WebSocketHandler.broadcast_connections(self)
+
+    def _add_periodic_ping(self):
+        self._periodic_ping = tornado.ioloop.PeriodicCallback(
+            functools.partial(self.ping, "0"), self._PING_INTERVAL * 1000.0)
+        self._periodic_ping.start()
+
+    def _add_cleanup_timeout(self):
+        self.remove_timeout()
+        io_loop = tornado.ioloop.IOLoop.instance()
+        self._cleanup_timeout = io_loop.add_timeout(
+            datetime.timedelta(seconds=self._DISCONNECT_TIMEOUT),
+            functools.partial(WebSocketHandler.cleanup, self))
+
+    def remove_timeout(self):
+        io_loop = tornado.ioloop.IOLoop.instance()
+        if hasattr(self, "_cleanup_timeout"):
+            io_loop.remove_timeout(self._cleanup_timeout)
+        
 
     def on_message(self, is_pressing):
         if is_pressing == "1":
@@ -79,35 +98,31 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
     def on_close(self):
         self.cleanup()
 
-    def send_state(self):
-        is_unlocked = WebSocketHandler.button.is_pressed
-        data = {
-            "is_unlocked": is_unlocked,
-            "connections": [c.id for c in WebSocketHandler.connections]
-        }
-        if is_unlocked:
-            data["id"] = self.id
-        for connection in WebSocketHandler.connections:
-            connection.write_message(tornado.escape.json_encode(data))
-
     def cleanup(self):
         self._periodic_ping.stop()
+        self.remove_timeout()
         WebSocketHandler.button.discard_press(self)
         WebSocketHandler.connections.remove(self)
         WebSocketHandler.send_state(self)
+        WebSocketHandler.broadcast_connections(self)
 
-    def _add_periodic_ping(self):
-        self._periodic_ping = tornado.ioloop.PeriodicCallback(
-            functools.partial(self.ping, "0"), self._PING_INTERVAL * 1000.0)
-        self._periodic_ping.start()
+    def send_state(self):
+        is_unlocked = WebSocketHandler.button.is_pressed
+        data = {
+            "is_unlocked": is_unlocked
+        }
+        if is_unlocked:
+            data["id"] = self.id
+        WebSocketHandler.broadcast_data(self, data)
 
-    def _add_cleanup_timeout(self):
-        io_loop = tornado.ioloop.IOLoop.instance()
-        if hasattr(self, "_cleanup_timeout"):
-            io_loop.remove_timeout(self._cleanup_timeout)
-        self._cleanup_timeout = io_loop.add_timeout(
-            datetime.timedelta(seconds=self._DISCONNECT_TIMEOUT),
-            functools.partial(WebSocketHandler.cleanup, self))
+    def broadcast_connections(self):
+        WebSocketHandler.broadcast_data(self, {
+            "connections": [c.id for c in WebSocketHandler.connections]
+        })
+
+    def broadcast_data(self, data):
+        for connection in WebSocketHandler.connections:
+            connection.write_message(tornado.escape.json_encode(data))
 
 
 tornado.options.parse_command_line()
